@@ -1,0 +1,144 @@
+
+using namespace std;
+
+const int pins[6]={A3,A4,3,4,5,6};
+const int motorPins[2]= {5, 6};
+const int ledPins[2] = {7,8};
+float currentDist[3] = {0.0, 0.0, 0.0};
+float previousDist[3] = {0.0, 0.0,0.0};
+const int trigPins[3];
+const int echoPins[3];
+
+
+void setup() {
+  // declare and define pin types
+  Serial.begin(9600);
+  for (int i = 0; i< sizeof(pins); i++){
+    if (i%2==0){
+       //for the trig pins
+        //considers 0 even for all intents and purposes, cool
+       pinMode(pins[i], OUTPUT);
+       trigPins[i] = pins[i];
+    }
+    else{
+      //for the echo pins
+      pinMode(pins[i],INPUT);
+      echoPins[i]=pins[i];
+    }
+  }
+  pinMode(motorPins[0],OUTPUT);
+  pinMode(motorPins[1], OUTPUT);
+
+  pinMode(ledPins[0], OUTPUT);
+  pinMode(ledPins[1], OUTPUT); 
+}
+
+float * readDistance(int trigPins[], int echoPins[]){
+  /*
+   * This function 
+   *  pulses sound from speaker,
+   *  detects the reflected/echoed sound
+   *  measures the amount of time it took to come back
+   *  calculates the distace based on the known speed of sound in atmosphere
+   *  returns this distance (in centimeteres)
+   */
+  static float distance[3]= {0.0,0.0,0.0};
+  for (int i=0; i<sizeof(trigPins); i++){ 
+    digitalWrite(trigPins[i], LOW);
+    delayMicroseconds(2);
+    digitalWrite(trigPins[i], HIGH);
+    delayMicroseconds(10);
+    digitalWrite(trigPins[i], LOW);
+  
+    float duration = pulseIn(echoPins[i], HIGH);
+    float thisDist = (duration*0.034/2);
+    distance[i]=thisDist;
+  }
+  return distance;
+}
+
+bool compareDist(float current, float previous, float threshold = 1, float minimum = 150){
+  /*
+   * This function
+   *  is not a work function, just for cleanup of data coming in
+   *  checks if the distance reading has changed more than some threshold
+   *    if not then it returns false
+   *    if so, it returns true
+   *  also checks if the distance reading is below some minimum value
+   *  
+   *  The goal is to check if the input information is useful or valuable
+   */
+  if (abs(current-previous)>threshold && current < minimum ){
+    return true;}
+  else{return false;}
+}
+
+
+void adjustMotor(int motorPin, float sensorVal, int motorMin = 0, int motorMax = 255, float rangeThresh = 100){
+  int wait = 100;
+  if(sensorVal<rangeThresh && sensorVal >75){
+    wait = 50;    
+  } else if (sensorVal<50){
+    wait = 25;
+  } else if (sensorVal <25){
+    wait = 0;
+  } else if(sensorVal > rangeThresh){
+    analogWrite(motorPin, LOW);
+    return 0;
+  }
+  delay(wait);
+  analogWrite(motorPin, 255);
+  delay(10);
+  analogWrite(motorPin,LOW);
+}
+
+void activateLED(int LED1, int LED2){
+  digitalWrite(LED1, HIGH);
+  digitalWrite(LED2, HIGH);
+}
+
+void setMotors(int motorPins[], float distances[], float minRange = 100, int midDist = 75, int nearDist = 50, int closeDist = 25){
+  int leftMotor = motorPins[0];
+  int rightMotor = motorPins[1];
+
+  float leftDist = distances[0];
+  float middleDist = distances[1];
+  float rightDist = distances[2];
+
+  if(leftDist<minRange && middleDist!< minRange){
+    if(leftDist<midDist || middleDist<midDist){
+      pulseMotor(leftMotor, 60);
+    } else if(leftDist<nearDist || middleDist<nearDist){
+      pulseMotor(leftMotor, 30);
+    } else if(leftDist<closeDist || middleDist<closeDist){
+      pulseMotor(leftMotor, 30);
+    }
+  }
+  
+}
+
+void pulseMotor(int motorPin, int wavelength){
+  analogWrite(motorPin, 255);
+  delay(20);
+  analogWrite(motorPin,LOW);
+  delay(wavelength);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  for (int i = 0; i<sizeof(currentDist); i++){
+    currentDist[i] = readDistance(trigPins, echpPins)[i];
+  }
+  for(int i = 0; i<sizeof(currentDist); i++){
+    if(compareDist(currentDist[i], previousDist[i])){
+      Serial.print(currentDist[i]);
+      Serial.print(" cm");
+      Serial.print("\n");
+      }
+    adjustMotor(motorPins[0], currentDist, compareDist(currentDist, previousDist));
+  }
+  
+  activateLED(ledPins[0], ledPins[1]);
+  previousDist = currentDist;
+  delay(10);
+}
